@@ -17,10 +17,13 @@ Bind a button (default **R2 / Right Trigger**). While airborne, pressing it perf
 
 ## Install
 
-1. Install [BepInEx](https://docs.bepinex.dev/) (5.x / the build your other Silksong mods use) into your Silksong folder.
-2. Download `DiveBind.dll` from the [latest release](../../releases/latest).
-3. Drop it into `Hollow Knight Silksong/BepInEx/plugins/`.
-4. Launch the game.
+You need [BepInEx](https://docs.bepinex.dev/) (5.x / the build your other Silksong mods use) installed in your Silksong folder first.
+
+**Option A — installer (easiest):** Download and extract `DiveBind-vX.Y.Z.zip` from the [latest release](../../releases/latest), then double-click **`install.cmd`**. It finds your Silksong install automatically (or asks you for the folder if it can't) and copies the mod into `BepInEx\plugins`. It works from anywhere — Downloads, Desktop, wherever — and elevates itself if the game is under `Program Files`. When it prompts for a path, you can type or paste it **without quotes**; spaces and parentheses like `C:\Program Files (x86)\...` are handled.
+
+**Option B — manual / mod manager:** The same zip has a `BepInEx\plugins\DiveBind.dll` layout, so you can extract it straight into your Silksong folder or hand the zip to Vortex. Or just grab the bare `DiveBind.dll` from the release and drop it into `Hollow Knight Silksong\BepInEx\plugins\`.
+
+Then launch the game and press **F4** to configure.
 
 ## Usage
 
