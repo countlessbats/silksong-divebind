@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <AssemblyName>DiveBind</AssemblyName>
+    <Product>Silksong Dive Bind</Product>
+    <Version>0.1.0</Version>
+    <LangVersion>latest</LangVersion>
+    <Configuration>Release</Configuration>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <Deterministic>true</Deterministic>
+    <DebugType>portable</DebugType>
+    <NoWarn>$(NoWarn);CS0169;CS0649;CS0414;NU1701;MSB3277;CS0618</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- Path to your Silksong install. Override with `-p:GameRoot=...`, or set a SilksongDir env var / MSBuild
+         property. Defaults to the standard Windows Steam location. -->
+    <GameRoot Condition="'$(GameRoot)' == '' and '$(SilksongDir)' != ''">$(SilksongDir)</GameRoot>
+    <GameRoot Condition="'$(GameRoot)' == ''">C:\Program Files (x86)\Steam\steamapps\common\Hollow Knight Silksong</GameRoot>
+    <Managed>$(GameRoot)\Hollow Knight Silksong_Data\Managed</Managed>
+    <BepCore>$(GameRoot)\BepInEx\core</BepCore>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="BepInEx"><HintPath>$(BepCore)\BepInEx.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="0Harmony"><HintPath>$(BepCore)\0Harmony.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Assembly-CSharp"><HintPath>$(Managed)\Assembly-CSharp.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Assembly-CSharp-firstpass"><HintPath>$(Managed)\Assembly-CSharp-firstpass.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine"><HintPath>$(Managed)\UnityEngine.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>$(Managed)\UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.IMGUIModule"><HintPath>$(Managed)\UnityEngine.IMGUIModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.InputLegacyModule"><HintPath>$(Managed)\UnityEngine.InputLegacyModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.Physics2DModule"><HintPath>$(Managed)\UnityEngine.Physics2DModule.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+
+</Project>
