@@ -17,11 +17,11 @@ Bind a button (default **R2 / Right Trigger**). While airborne, pressing it perf
 
 ## Install
 
-You need [BepInEx](https://docs.bepinex.dev/) (5.x / the build your other Silksong mods use) installed in your Silksong folder first.
+The release zip **includes BepInEx** — you don't need to install it separately. The installer adds it only if your game doesn't already have one, and never touches an existing BepInEx setup.
 
-**Option A — installer (easiest):** Download and extract `DiveBind-vX.Y.Z.zip` from the [latest release](../../releases/latest), then double-click **`install.cmd`**. It finds your Silksong install automatically (or asks you for the folder if it can't) and copies the mod into `BepInEx\plugins`. It works from anywhere — Downloads, Desktop, wherever — and elevates itself if the game is under `Program Files`. When it prompts for a path, you can type or paste it **without quotes**; spaces and parentheses like `C:\Program Files (x86)\...` are handled.
+**Option A — installer (easiest):** Download and extract `DiveBind-v0.1.0.zip` from the [latest release](../../releases/latest), then double-click **`install.cmd`**. It finds your Silksong install automatically (or asks if it can't), installs BepInEx if needed, and drops the mod into `BepInEx\plugins`. Works from anywhere — Downloads, Desktop, wherever — and elevates itself if the game is under `Program Files`. When it asks for a path, type or paste it **without quotes**; spaces and parentheses like `C:\Program Files (x86)\...` are handled.
 
-**Option B — manual / mod manager:** The same zip has a `BepInEx\plugins\DiveBind.dll` layout, so you can extract it straight into your Silksong folder or hand the zip to Vortex. Or just grab the bare `DiveBind.dll` from the release and drop it into `Hollow Knight Silksong\BepInEx\plugins\`.
+**Option B — manual / mod manager:** Extract the zip straight into your Silksong folder (it merges in BepInEx + the mod), or hand the zip to Vortex. Already have BepInEx? Just grab the bare `DiveBind.dll` from the release and drop it into `Hollow Knight Silksong\BepInEx\plugins\`. (A manual extract also leaves `install.*`, README, and LICENSE in the game folder — harmless; delete them if you like.)
 
 Then launch the game and press **F4** to configure.
 
@@ -68,6 +68,10 @@ The built `DiveBind.dll` lands in `src/bin/Release/`.
 - It triggers the down attack directly, bypassing the game's normal attack-input gating; the mod adds its own airborne check, a short debounce, and guards against firing mid-attack/dash.
 - It reads the *active* controller, so in local co-op setups with two pads it can't distinguish pad 1 from pad 2.
 - Crests whose down attack isn't a directional dive still work — you just get that crest's down attack, facing your motion.
+
+## Bundled software
+
+The release archive includes [BepInEx](https://github.com/BepInEx/BepInEx) (LGPL-2.1), redistributed unmodified, purely so installation is one step. BepInEx belongs to its authors. DiveBind itself is MIT.
 
 ## License
 

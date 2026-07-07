@@ -121,14 +121,31 @@ if (-not $game) {
     }
 }
 
-$plugins = Join-Path $game 'BepInEx\plugins'
-if (-not (Test-Path (Join-Path $game 'BepInEx'))) {
-    Write-Host "NOTE: BepInEx isn't installed in this folder yet. DiveBind won't load until you install BepInEx." -ForegroundColor Yellow
-    Write-Host "Installing anyway so it's ready once BepInEx is in place."
-}
+$plugins    = Join-Path $game 'BepInEx\plugins'
+$bundleCore = Join-Path $PSScriptRoot 'BepInEx\core'
+$installedBep = $false
 
-# Copy, elevating if the target is write-protected (e.g. under Program Files).
+# All writes go in one try so a single elevation (if needed under Program Files) covers everything.
 try {
+    # Install the bundled BepInEx only if the game doesn't already have it (never clobber an existing one).
+    if (-not (Test-Path (Join-Path $game 'BepInEx\core\BepInEx.dll'))) {
+        if (Test-Path $bundleCore) {
+            Write-Head 'BepInEx not found — installing the bundled copy'
+            foreach ($f in 'winhttp.dll', 'doorstop_config.ini', '.doorstop_version', 'changelog.txt') {
+                $src = Join-Path $PSScriptRoot $f
+                if (Test-Path $src) { Copy-Item $src (Join-Path $game $f) -Force }
+            }
+            New-Item -ItemType Directory -Force -Path (Join-Path $game 'BepInEx\core') | Out-Null
+            Copy-Item (Join-Path $bundleCore '*') (Join-Path $game 'BepInEx\core') -Recurse -Force
+            $installedBep = $true
+        } else {
+            Write-Host "NOTE: BepInEx isn't installed and no bundled copy is beside this installer." -ForegroundColor Yellow
+            Write-Host "DiveBind won't load until BepInEx is installed. (The release zip bundles it.)"
+        }
+    } else {
+        Write-Host "BepInEx already installed — leaving it untouched." -ForegroundColor DarkGray
+    }
+
     New-Item -ItemType Directory -Force -Path $plugins | Out-Null
     Copy-Item $dll (Join-Path $plugins 'DiveBind.dll') -Force
 } catch [System.UnauthorizedAccessException] {
@@ -141,7 +158,7 @@ try {
 $dest = Join-Path $plugins 'DiveBind.dll'
 if (Test-Path $dest) {
     Write-Host ''
-    Write-Host "Installed DiveBind ->" -ForegroundColor Green
+    Write-Host ("Installed " + $(if ($installedBep) { 'BepInEx + DiveBind' } else { 'DiveBind' }) + " ->") -ForegroundColor Green
     Write-Host "  $dest"
     Write-Host "Launch the game and press F4 to configure. Default: R2, airborne only."
 } else {
