@@ -16,7 +16,7 @@ namespace DiveBind
     // neutral makes you dive backwards. This mod triggers the down attack but forces facing to your CURRENT MOTION
     // direction, so the dive always goes the way you're travelling. F4 opens a bind menu. Default: Left Bumper (L1),
     // only while airborne — and while diving, L1 does NOT pull out the quick-map until released and pressed again.
-    [BepInPlugin(Guid, "Silksong Dive Bind", "0.4.3")]
+    [BepInPlugin(Guid, "Silksong Dive Bind", "0.4.4")]
     public sealed class DivePlugin : BaseUnityPlugin
     {
         public const string Guid = "com.will.silksong.divebind";
@@ -75,7 +75,7 @@ namespace DiveBind
             if (_attackMethod == null) Log.LogError("Could not find HeroController.Attack(AttackDirection) — dive won't fire.");
 
             new Harmony(Guid).PatchAll(typeof(DivePlugin).Assembly);
-            Log.LogInfo("DiveBind v0.4.3 ready. F4 for menu. Default: L1, airborne only; map suppressed while diving.");
+            Log.LogInfo("DiveBind v0.4.4 ready. F4 for menu. Default: L1, airborne only; map suppressed while diving.");
         }
 
         private void Update()
@@ -152,23 +152,38 @@ namespace DiveBind
         // into a dash-stab, but OnlyInAir keeps us airborne here). Unknown FSM moves get nothing.
         private static bool SendFsmAttackExit(HeroController hero)
         {
+            // NOTE: do NOT gate the umbrella on cState.floating — the Umbrella Float FSM never sets
+            // that flag (it belongs to other mechanics), which is why v0.4.3 silently sent nothing.
+            // The FSM's own variables are the reliable activity signal: 'Has Control' is true from its
+            // Take Control state until it exits; 'Is Active' from Inflate. Sprint's cState.isSprinting
+            // IS set by its FSM (Air Dir state), so that check stays.
             bool sent = false;
             var fsms = hero.GetComponents<PlayMakerFSM>();
             for (int i = 0; i < fsms.Length; i++)
             {
                 var f = fsms[i];
                 if (f == null) continue;
-                if (hero.cState.floating && f.FsmName == "Umbrella Float")
+                if (f.FsmName == "Umbrella Float")
                 {
-                    f.SendEvent("ATTACK CANCEL");
-                    sent = true;
+                    var hasControl = f.FsmVariables.GetFsmBool("Has Control");
+                    var isActive = f.FsmVariables.GetFsmBool("Is Active");
+                    if ((hasControl != null && hasControl.Value) || (isActive != null && isActive.Value))
+                    {
+                        f.SendEvent("ATTACK CANCEL");
+                        DivePlugin.Log.LogInfo("[divebind] float exit: sent ATTACK CANCEL to Umbrella Float (state was '" + f.ActiveStateName + "')");
+                        sent = true;
+                    }
                 }
                 else if (hero.cState.isSprinting && !hero.cState.onGround && f.FsmName == "Sprint")
                 {
                     f.SendEvent("ATTACK");
+                    DivePlugin.Log.LogInfo("[divebind] air-sprint exit: sent ATTACK to Sprint (state was '" + f.ActiveStateName + "')");
                     sent = true;
                 }
             }
+            if (!sent)
+                DivePlugin.Log.LogInfo("[divebind] in a cancelable FSM move the mod doesn't recognize — ignored (isSprinting="
+                    + hero.cState.isSprinting + ", onGround=" + hero.cState.onGround + ")");
             return sent;
         }
 
@@ -189,11 +204,19 @@ namespace DiveBind
         private void PumpQueuedDive(HeroController hero)
         {
             if (_queuedDiveUntil <= 0f) return;
-            if (Time.unscaledTime >= _queuedDiveUntil) { _queuedDiveUntil = 0f; return; }
-            if (CfgOnlyInAir.Value && hero.cState.onGround) { _queuedDiveUntil = 0f; return; }
+            if (Time.unscaledTime >= _queuedDiveUntil)
+            {
+                _queuedDiveUntil = 0f;
+                Log.LogInfo("[divebind] queued dive expired unfired: acceptingInput=" + hero.acceptingInput
+                    + " CanAttack=" + hero.CanAttack() + " relinquished=" + hero.controlReqlinquished
+                    + " dashing=" + hero.cState.dashing + " onGround=" + hero.cState.onGround);
+                return;
+            }
+            if (CfgOnlyInAir.Value && hero.cState.onGround) { _queuedDiveUntil = 0f; _status = "landed before queued dive"; return; }
             if (DiveHardBlocked(hero)) return;
             if (!hero.acceptingInput || !hero.CanAttack() || hero.cState.dashing) return;
             _queuedDiveUntil = 0f;
+            Log.LogInfo("[divebind] queued dive firing");
             DoDive(hero);
         }
 
