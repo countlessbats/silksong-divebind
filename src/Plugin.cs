@@ -16,7 +16,7 @@ namespace DiveBind
     // neutral makes you dive backwards. This mod triggers the down attack but forces facing to your CURRENT MOTION
     // direction, so the dive always goes the way you're travelling. F4 opens a bind menu. Default: Left Bumper (L1),
     // only while airborne — and while diving, L1 does NOT pull out the quick-map until released and pressed again.
-    [BepInPlugin(Guid, "Silksong Dive Bind", "0.4.2")]
+    [BepInPlugin(Guid, "Silksong Dive Bind", "0.4.3")]
     public sealed class DivePlugin : BaseUnityPlugin
     {
         public const string Guid = "com.will.silksong.divebind";
@@ -75,7 +75,7 @@ namespace DiveBind
             if (_attackMethod == null) Log.LogError("Could not find HeroController.Attack(AttackDirection) — dive won't fire.");
 
             new Harmony(Guid).PatchAll(typeof(DivePlugin).Assembly);
-            Log.LogInfo("DiveBind v0.4.2 ready. F4 for menu. Default: L1, airborne only; map suppressed while diving.");
+            Log.LogInfo("DiveBind v0.4.3 ready. F4 for menu. Default: L1, airborne only; map suppressed while diving.");
         }
 
         private void Update()
@@ -122,22 +122,55 @@ namespace DiveBind
                 }
 
                 // Brolly float and air-sprint are "cancelable FSM moves": a PlayMaker FSM has taken control
-                // (CanInput false, so CanAttack fails) but the game lets attacks/dashes/tools interrupt them.
-                // Vanilla's attack works there because those FSMs listen for the ATTACK button themselves;
-                // they can't see our dive button. So we do what the game's own skill-tool code does: send the
-                // generic FSM CANCEL broadcast (the umbrella + sprint FSMs both bail out on it and hand back
-                // control), then fire the dive as soon as the normal gate clears — vanilla-style press queue.
+                // (CanInput false, so CanAttack fails) but the game lets attacks interrupt them. Vanilla's
+                // attack works there because those FSMs listen for the ATTACK button themselves; they can't
+                // see our dive button. So we send each FSM the exact event its own attack-listener would
+                // have fired — umbrella's global 'ATTACK CANCEL', sprint's local 'ATTACK' — which runs the
+                // FSM's designed attack-exit (control handed back), then the dive fires from the queue.
+                // (v0.4.2 broadcast the generic FSM CANCEL here — that's the damage/cleanup path, which
+                // assumes the SENDER takes over the hero; nothing did, so Hornet was left control-less.)
                 if (hero.cState.isInCancelableFSMMove)
                 {
-                    EventRegister.SendEvent(EventRegisterEvents.FsmCancel);
-                    _queuedDiveUntil = Time.unscaledTime + 0.35f;
-                    _status = "float/sprint canceled — dive queued";
+                    if (SendFsmAttackExit(hero))
+                    {
+                        _queuedDiveUntil = Time.unscaledTime + 0.45f;
+                        _watchUntil = Time.unscaledTime + 4f;   // failsafe covers a botched FSM exit too
+                        _wedgeSince = -1f;
+                        _status = "float/sprint attack-exit sent — dive queued";
+                    }
+                    else _status = "in an FSM move the mod doesn't know — ignored";
                 }
             }
             catch (Exception e) { Log.LogWarning("update: " + e.Message); }
         }
 
         private float _queuedDiveUntil;
+
+        // Deliver the attack-interrupt each FSM was built to receive from its own attack listener.
+        // Targeted per-FSM (never a broadcast): 'ATTACK CANCEL' is global on Umbrella Float only;
+        // 'ATTACK' is a local transition on the Sprint FSM's air states (grounded sprint would turn it
+        // into a dash-stab, but OnlyInAir keeps us airborne here). Unknown FSM moves get nothing.
+        private static bool SendFsmAttackExit(HeroController hero)
+        {
+            bool sent = false;
+            var fsms = hero.GetComponents<PlayMakerFSM>();
+            for (int i = 0; i < fsms.Length; i++)
+            {
+                var f = fsms[i];
+                if (f == null) continue;
+                if (hero.cState.floating && f.FsmName == "Umbrella Float")
+                {
+                    f.SendEvent("ATTACK CANCEL");
+                    sent = true;
+                }
+                else if (hero.cState.isSprinting && !hero.cState.onGround && f.FsmName == "Sprint")
+                {
+                    f.SendEvent("ATTACK");
+                    sent = true;
+                }
+            }
+            return sent;
+        }
 
         // Downspike-specific denies (vanilla only checks these when the Down button is held, and a
         // DownSpike-crest dive never sets cState.attacking — firing into them wedged Hornet pre-0.4.1),
@@ -196,13 +229,17 @@ namespace DiveBind
             if (!CfgFailsafe.Value || _watchUntil <= 0f) return;
             if (Time.unscaledTime > _watchUntil) { _watchUntil = 0f; _wedgeSince = -1f; return; }
 
+            // No velocity requirement: a wedged Hornet can be DRIFTING (gravity off + leftover horizontal
+            // speed — seen live on the v0.4.2 float bug, which the old near-zero-velocity check missed).
+            // Instead, stand down while an FSM move is legitimately mid-flight (floating / cancelable
+            // move) — a wedge is control relinquished with NO owner: no FSM move, no attack, no spike.
             bool wedged = hero.controlReqlinquished
                 && !hero.cState.onGround
+                && !hero.cState.floating && !hero.cState.isInCancelableFSMMove
                 && !hero.cState.attacking && !hero.cState.downSpiking && !hero.cState.downSpikeAntic
                 && !hero.cState.hazardDeath && !hero.cState.hazardRespawning && !hero.cState.dead
                 && hero.transitionState == HeroTransitionState.WAITING_TO_TRANSITION
-                && hero.Body != null && hero.Body.gravityScale == 0f
-                && hero.Body.linearVelocity.sqrMagnitude < 0.01f;
+                && hero.Body != null && hero.Body.gravityScale == 0f;
 
             if (!wedged) { _wedgeSince = -1f; return; }
             if (_wedgeSince < 0f) { _wedgeSince = Time.unscaledTime; return; }
