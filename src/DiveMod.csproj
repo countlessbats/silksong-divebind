@@ -4,7 +4,7 @@
     <TargetFramework>netstandard2.1</TargetFramework>
     <AssemblyName>DiveBind</AssemblyName>
     <Product>Silksong Dive Bind</Product>
-    <Version>0.4.1</Version>
+    <Version>0.4.2</Version>
     <LangVersion>latest</LangVersion>
     <Configuration>Release</Configuration>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>

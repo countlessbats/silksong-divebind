@@ -16,7 +16,7 @@ namespace DiveBind
     // neutral makes you dive backwards. This mod triggers the down attack but forces facing to your CURRENT MOTION
     // direction, so the dive always goes the way you're travelling. F4 opens a bind menu. Default: Left Bumper (L1),
     // only while airborne — and while diving, L1 does NOT pull out the quick-map until released and pressed again.
-    [BepInPlugin(Guid, "Silksong Dive Bind", "0.4.1")]
+    [BepInPlugin(Guid, "Silksong Dive Bind", "0.4.2")]
     public sealed class DivePlugin : BaseUnityPlugin
     {
         public const string Guid = "com.will.silksong.divebind";
@@ -75,7 +75,7 @@ namespace DiveBind
             if (_attackMethod == null) Log.LogError("Could not find HeroController.Attack(AttackDirection) — dive won't fire.");
 
             new Harmony(Guid).PatchAll(typeof(DivePlugin).Assembly);
-            Log.LogInfo("DiveBind v0.4.1 ready. F4 for menu. Default: L1, airborne only; map suppressed while diving.");
+            Log.LogInfo("DiveBind v0.4.2 ready. F4 for menu. Default: L1, airborne only; map suppressed while diving.");
         }
 
         private void Update()
@@ -99,6 +99,7 @@ namespace DiveBind
                 if (hero == null || gm == null || gm.GameState != GameState.PLAYING) return;
 
                 WatchdogTick(hero, gm);
+                PumpQueuedDive(hero);
 
                 var dev = InputManager.ActiveDevice;
                 if (dev == null) return;
@@ -109,21 +110,58 @@ namespace DiveBind
                 if (CfgOnlyInAir.Value && !airborne) { _status = "on ground — ignored"; return; }
                 if (Time.unscaledTime - _lastDiveAt < 0.18f) return;               // debounce
 
+                if (DiveHardBlocked(hero)) return;
+
                 // Gate EXACTLY like the game's own attack input (acceptingInput && CanAttack()) — that covers
                 // attack cooldown, attacking, dead/hazard states, relinquished control, recoil (no_input),
-                // hard/dash landings, and UI input blocks. On top of that, the downspike-specific states:
-                // vanilla only checks these when the Down button is held, and a DownSpike-crest dive never
-                // sets cState.attacking, so without these an L1 press MID-DIVE or mid-pogo re-entered
-                // Attack() and could cancel the dive after RelinquishControl — control was never returned
-                // and Hornet froze. Never re-enter while any downspike state is live, or during a transition.
-                if (!hero.acceptingInput || !hero.CanAttack()) return;
-                if (hero.cState.dashing || hero.cState.downSpiking || hero.cState.downSpikeAntic
-                    || hero.cState.downSpikeBouncing || hero.cState.downSpikeRecovery) return;
-                if (hero.transitionState != HeroTransitionState.WAITING_TO_TRANSITION) return;   // mid scene transition
+                // hard/dash landings, and UI input blocks.
+                if (hero.acceptingInput && hero.CanAttack() && !hero.cState.dashing)
+                {
+                    DoDive(hero);
+                    return;
+                }
 
-                DoDive(hero);
+                // Brolly float and air-sprint are "cancelable FSM moves": a PlayMaker FSM has taken control
+                // (CanInput false, so CanAttack fails) but the game lets attacks/dashes/tools interrupt them.
+                // Vanilla's attack works there because those FSMs listen for the ATTACK button themselves;
+                // they can't see our dive button. So we do what the game's own skill-tool code does: send the
+                // generic FSM CANCEL broadcast (the umbrella + sprint FSMs both bail out on it and hand back
+                // control), then fire the dive as soon as the normal gate clears — vanilla-style press queue.
+                if (hero.cState.isInCancelableFSMMove)
+                {
+                    EventRegister.SendEvent(EventRegisterEvents.FsmCancel);
+                    _queuedDiveUntil = Time.unscaledTime + 0.35f;
+                    _status = "float/sprint canceled — dive queued";
+                }
             }
             catch (Exception e) { Log.LogWarning("update: " + e.Message); }
+        }
+
+        private float _queuedDiveUntil;
+
+        // Downspike-specific denies (vanilla only checks these when the Down button is held, and a
+        // DownSpike-crest dive never sets cState.attacking — firing into them wedged Hornet pre-0.4.1),
+        // plus death/hazard states and mid scene transition. These block BOTH immediate and queued dives.
+        private static bool DiveHardBlocked(HeroController hero)
+        {
+            return hero.cState.downSpiking || hero.cState.downSpikeAntic
+                || hero.cState.downSpikeBouncing || hero.cState.downSpikeRecovery
+                || hero.cState.dead || hero.cState.hazardDeath || hero.cState.hazardRespawning
+                || hero.transitionState != HeroTransitionState.WAITING_TO_TRANSITION;
+        }
+
+        // A dive queued behind an FSM-move cancel fires the moment the normal gate clears (a few frames
+        // later, once the umbrella/sprint FSM has handed control back). Expires quietly if it doesn't —
+        // e.g. we landed (OnlyInAir) or something else grabbed the hero first.
+        private void PumpQueuedDive(HeroController hero)
+        {
+            if (_queuedDiveUntil <= 0f) return;
+            if (Time.unscaledTime >= _queuedDiveUntil) { _queuedDiveUntil = 0f; return; }
+            if (CfgOnlyInAir.Value && hero.cState.onGround) { _queuedDiveUntil = 0f; return; }
+            if (DiveHardBlocked(hero)) return;
+            if (!hero.acceptingInput || !hero.CanAttack() || hero.cState.dashing) return;
+            _queuedDiveUntil = 0f;
+            DoDive(hero);
         }
 
         private void DoDive(HeroController hero)
