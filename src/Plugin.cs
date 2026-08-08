@@ -16,11 +16,16 @@ namespace DiveBind
     // neutral makes you dive backwards. This mod triggers the down attack but forces facing to your CURRENT MOTION
     // direction, so the dive always goes the way you're travelling. F4 opens a bind menu. Default: Left Bumper (L1),
     // only while airborne — and while diving, L1 does NOT pull out the quick-map until released and pressed again.
-    [BepInPlugin(Guid, "Silksong Dive Bind", "0.4.4")]
+    [BepInPlugin(Guid, "Silksong Dive Bind", "0.4.5")]
     public sealed class DivePlugin : BaseUnityPlugin
     {
         public const string Guid = "com.will.silksong.divebind";
         internal static ManualLogSource Log;
+        internal static DivePlugin Instance;
+
+        // While set (short window after we send a float/sprint attack-exit), the FSM's own vanilla
+        // attack call is converted into our forced downward dive — see Patch_DoAttack.
+        internal static float InterceptDoAttackUntil;
 
         internal static ConfigEntry<InputControlType> CfgControl;
         internal static ConfigEntry<bool> CfgOnlyInAir;
@@ -61,6 +66,7 @@ namespace DiveBind
         private void Awake()
         {
             Log = Logger;
+            Instance = this;
             CfgControl = Config.Bind("Dive", "Control", InputControlType.LeftBumper,
                 "Controller control that triggers the forward dive attack. Default LeftBumper (L1). Rebind in the F4 menu.");
             CfgOnlyInAir = Config.Bind("Dive", "OnlyInAir", true,
@@ -75,7 +81,7 @@ namespace DiveBind
             if (_attackMethod == null) Log.LogError("Could not find HeroController.Attack(AttackDirection) — dive won't fire.");
 
             new Harmony(Guid).PatchAll(typeof(DivePlugin).Assembly);
-            Log.LogInfo("DiveBind v0.4.4 ready. F4 for menu. Default: L1, airborne only; map suppressed while diving.");
+            Log.LogInfo("DiveBind v0.4.5 ready. F4 for menu. Default: L1, airborne only; map suppressed while diving.");
         }
 
         private void Update()
@@ -131,14 +137,21 @@ namespace DiveBind
                 // assumes the SENDER takes over the hero; nothing did, so Hornet was left control-less.)
                 if (hero.cState.isInCancelableFSMMove)
                 {
+                    // Arm the DoAttack intercept BEFORE sending: PlayMaker processes the exit (and the
+                    // FSM's own vanilla attack call, if it makes one) synchronously inside SendEvent.
+                    InterceptDoAttackUntil = Time.unscaledTime + 0.5f;
                     if (SendFsmAttackExit(hero))
                     {
-                        _queuedDiveUntil = Time.unscaledTime + 0.45f;
+                        _queuedDiveUntil = Time.unscaledTime + 0.45f;   // backstop if the FSM exited without attacking
                         _watchUntil = Time.unscaledTime + 4f;   // failsafe covers a botched FSM exit too
                         _wedgeSince = -1f;
-                        _status = "float/sprint attack-exit sent — dive queued";
+                        _status = "float/sprint attack-exit sent";
                     }
-                    else _status = "in an FSM move the mod doesn't know — ignored";
+                    else
+                    {
+                        InterceptDoAttackUntil = 0f;
+                        _status = "in an FSM move the mod doesn't know — ignored";
+                    }
                 }
             }
             catch (Exception e) { Log.LogWarning("update: " + e.Message); }
@@ -212,7 +225,13 @@ namespace DiveBind
                     + " dashing=" + hero.cState.dashing + " onGround=" + hero.cState.onGround);
                 return;
             }
-            if (CfgOnlyInAir.Value && hero.cState.onGround) { _queuedDiveUntil = 0f; _status = "landed before queued dive"; return; }
+            if (CfgOnlyInAir.Value && hero.cState.onGround)
+            {
+                _queuedDiveUntil = 0f;
+                _status = "landed before queued dive";
+                Log.LogInfo("[divebind] queued dive dropped: cState.onGround went true first");
+                return;
+            }
             if (DiveHardBlocked(hero)) return;
             if (!hero.acceptingInput || !hero.CanAttack() || hero.cState.dashing) return;
             _queuedDiveUntil = 0f;
@@ -220,8 +239,10 @@ namespace DiveBind
             DoDive(hero);
         }
 
-        private void DoDive(HeroController hero)
+        internal void DoDive(HeroController hero)
         {
+            InterceptDoAttackUntil = 0f;   // one dive per press, whichever path delivered it
+            _queuedDiveUntil = 0f;
             // Direction from current horizontal motion; fall back to held input, then current facing.
             float vx = hero.Body != null ? hero.Body.linearVelocity.x : 0f;
             bool wantRight;
@@ -361,6 +382,25 @@ namespace DiveBind
             GUILayout.Space(6);
             if (GUILayout.Button("Close")) _menu = false;
             GUI.DragWindow(new Rect(0, 0, 10000, 20));
+        }
+    }
+
+    // The umbrella FSM's attack-exit ('Attack Cancel') doesn't just end the float — it also performs the
+    // vanilla attack itself, and vanilla picks the direction from the HELD STICK (DoAttack), so a neutral
+    // stick produced a forward slash instead of a dive. For a short window after we send a float/sprint
+    // attack-exit, convert that incoming vanilla attack into our forced downward dive: it fires at exactly
+    // the moment vanilla would attack, no timing race. Outside the window this patch is a pass-through.
+    [HarmonyPatch(typeof(HeroController), "DoAttack")]
+    internal static class Patch_DoAttack
+    {
+        private static bool Prefix(HeroController __instance)
+        {
+            if (DivePlugin.InterceptDoAttackUntil <= 0f
+                || Time.unscaledTime > DivePlugin.InterceptDoAttackUntil
+                || DivePlugin.Instance == null) return true;
+            DivePlugin.Log.LogInfo("[divebind] DoAttack intercepted → forced downward dive");
+            DivePlugin.Instance.DoDive(__instance);
+            return false;   // we performed the (downward) attack; skip vanilla direction-picking
         }
     }
 
