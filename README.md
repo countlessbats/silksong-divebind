@@ -13,6 +13,7 @@ Bind a button (default **L1 / Left Bumper**). While airborne, pressing it perfor
 - 🎯 Dives in your **direction of travel**, not the direction you happen to be holding
 - 🎮 Reads the game's own controller layer, so it works with **triggers** (R2/L2), bumpers, face buttons, d-pad, and stick clicks
 - 🗺️ On L1 (the quick-map button), a dive **doesn't pull out the quick-map** — the map stays bound and works normally once you release the button
+- ☂️ Works from the **brolly float** and **air-sprint** — the dive cancels the move exactly the way the vanilla attack button would, then comes out downward in your direction of motion
 - ⌨️ **F4** in-game menu to rebind and toggle options
 - 🪶 Uses whatever down attack your **current crest** has — it just fixes the direction
 - 🛟 A safety net restores control automatically if a dive ever leaves Hornet frozen
@@ -52,7 +53,7 @@ Settings live in `BepInEx/config/com.will.silksong.divebind.cfg` (also editable 
 
 On the bound control's press (airborne), the mod reads `HeroController.Body.linearVelocity.x` to decide your true forward direction, then invokes the game's private `Attack(AttackDirection.downward)`. A Harmony prefix on `TrySetCorrectFacing` runs only during that synthetic attack and flips Hornet to face your motion direction instead of the stick — so the DownSpike's facing-derived horizontal launch comes out correct. Falls back to held input, then current facing, when you have no horizontal speed.
 
-The dive only fires when the game itself would accept an attack press (`acceptingInput && CanAttack()`, plus the downspike-specific states and scene transitions), so it can't re-enter the attack machinery mid-dive, mid-pogo, or during hit-recoil. If the dive control doubles as the quick-map button, the mod unbinds it from the map action for the duration of the hold and restores it on release. As a last line of defense, a watchdog restores control and gravity if a dive ever leaves Hornet frozen mid-air.
+The dive only fires when the game itself would accept an attack press (`acceptingInput && CanAttack()`, plus the downspike-specific states and scene transitions), so it can't re-enter the attack machinery mid-dive, mid-pogo, or during hit-recoil. During the brolly float and air-sprint — FSM-controlled moves the vanilla attack button can interrupt — the mod sends the controlling FSM the same attack-interrupt its own attack listener would fire, and converts the resulting attack into the downward dive. If the dive control doubles as the quick-map button, the mod unbinds it from the map action for the duration of the hold and restores it on release. As a last line of defense, a watchdog restores control and gravity if a dive ever leaves Hornet frozen mid-air.
 
 ## Build from source
 
